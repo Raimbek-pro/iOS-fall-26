@@ -89,6 +89,7 @@ print("ALMA-7 systems online: \(rawLog.count) log lines, \(crew.count) crew memb
 // MARK: Level 1 · Decoding Telemetry
 
 // 1.1
+@discardableResult
  func parseReading(_ raw: String) -> Reading? {
      var name = ""
      var value = ""
@@ -127,8 +128,8 @@ parseReading(":55") // nil
      return (valid : valid ,invalidCount :  invC)
      
  }
-
- let A = parseLog(rawLog)
+let logA = parseLog(rawLog)
+let A = logA.invalidCount
 print(A)
 
 
@@ -154,7 +155,7 @@ print(A)
      return arr
  }
 
-var sel02 = select(A.valid, where: {
+var sel02 = select(logA.valid, where: {
     $0.sensor == "O2"
 })
 var sel02vals = values(of: sel02)
@@ -190,7 +191,7 @@ print(sel02vals)
  func stats(_ values: Int...) -> (min: Int, max: Int, average: Double)? { stats(of: values) }
 
 print(stats())
-print(stats(of: sel02vals))
+var statis = stats(of: sel02vals)
 let B = Int(stats(of: sel02vals)!.average)
 
 
@@ -224,33 +225,138 @@ sel02vals.sort {
 // MARK: Level 3 · Temperature Stabilization
 
 // 3.1
-// func heatUp(_ t: Int) -> Int { }
-// func coolDown(_ t: Int) -> Int { }
-// func hold(_ t: Int) -> Int { }
-// func chooseProtocol(for temp: Int) -> (Int) -> Int { }
+ func heatUp(_ t: Int) -> Int {
+     t + 5
+ }
+ func coolDown(_ t: Int) -> Int { t - 3 }
+ func hold(_ t: Int) -> Int { t }
+ func chooseProtocol(for temp: Int) -> (Int) -> Int {
+     switch temp {
+     case ...18 :
+         return heatUp(_:)
+     case 24... :
+         return coolDown(_:)
+     default :
+         return hold(_:)
+     }
+ }
+
+
 
 // 3.2
-// func runUntilStable(from start: Int, maxSteps: Int = 10) -> (finalTemp: Int, steps: Int, isStable: Bool) { }
+ func runUntilStable(from start: Int, maxSteps: Int = 10) -> (finalTemp: Int, steps: Int, isStable: Bool) {
+     var g = start
+     var n = 0
+     var steps = 0
+     var isStab = false
+     while true{
+         n = g
+        
+        var a = chooseProtocol(for: g)
+        print(a)
+       
+         
+        g =  a(g)
+        if n == g {
+             isStab = true
+             break
+         }
+         steps += 1
+         if  steps == maxSteps {
+             break
+         }
+        
+         
+     }
+    
+     return (finalTemp : g , steps : steps  , isStable : isStab  )
+ }
 
-// let C = ...
+print(runUntilStable(from: 31))
+print(runUntilStable(from: -100, maxSteps: 5))
+print("A", A)
+var  C = 0
+if let res = statis?.min {
+    C =   runUntilStable(from: res ).steps
+}
+
+
 
 
 // MARK: Level 4 · The Crew
 
 // 4.1
-// func oxygenLevel(of member: CrewMember) -> Int? { }
+ func oxygenLevel(of member: CrewMember) -> Int? {
+     member.module?.oxygenTank?.level
+ }
+
+
 
 // 4.2
-// func status(of member: CrewMember) -> String { }
+ func status(of member: CrewMember) -> String {
+     if let mod = member.module {
+         if let lev = oxygenLevel(of: member) {
+             return "\(member.name): \(lev) \(lev >= 20 ? "OK" : "CRITICAL")"
+         } else {
+             return  "\(member.name): no data (Dock)"
+         }
+    
+     } else {
+         return  "\(member.name): no data (open space)"
+     }
+     
+ }
 
 // 4.3
-// @discardableResult
-// func transferOxygen(from source: inout Int, to target: inout Int, amount: Int) -> Int { }
+ @discardableResult
+ func transferOxygen(from source: inout Int, to target: inout Int, amount: Int) -> Int {
+  //  lab.oxygenTank?.level
+     guard amount >= 0 else {
+         return 0
+     }
+     if source >= amount {
+         source -= amount
+         target += amount
+         if target > 100 {
+             var ol = target
+             target = 100
+             return (amount - (ol - 100 ))
+         }
+         return amount
+     }
+     
+     return 0
+ }
+print( hab.oxygenTank?.level)
+if let source = lab.oxygenTank,
 
-// let D = ...
+   let target = hab.oxygenTank {
 
+    transferOxygen(from: &source.level, to: &target.level, amount: 30)
+
+}
+var D = 0
+if let Dres = hab.oxygenTank?.level {
+    D = Dres
+}
+print(D)
 // 4.4
-// func evacuationOrder(_ names: String..., roster: [String: CrewMember]) -> [String] { }
+ func evacuationOrder(_ names: String..., roster: [String: CrewMember]) -> [String] {
+
+     var newnames =  roster.filter { el in
+         names.contains(el.key)
+     }
+         
+
+     var out = newnames.sorted(by: {
+         $0.value.priority <  $1.value.priority
+     })
+     var output = out.map({$0.key})
+     print(output)
+     return [""]
+ }
+
+print(evacuationOrder("Dana" , "Ghost" , "Aigerim" , "Timur", roster: roster))
 
 
 // MARK: Level 5 · The Saboteur's Logbook
@@ -258,33 +364,70 @@ sel02vals.sort {
 // oxygenLevel(of:) to compile). Comment on every problem, then
 // write fixed versions and a test that proves the logic bug is gone.
 
-/*
+
+//func reportOxygen(for member: CrewMember) -> String {
+//    let tank = member.module!.oxygenTank!
+//    return "\(member.name): \(tank.level)%"
+//}
+//
+//func firstCritical(in crew: [CrewMember]) -> String {
+//    var result: String?
+//    for member in crew {
+//        if oxygenLevel(of: member)! < 20 {
+//            result = member.name
+//        }
+//    }
+//    return result!
+//}
+
+
 func reportOxygen(for member: CrewMember) -> String {
-    let tank = member.module!.oxygenTank!
-    return "\(member.name): \(tank.level)%"
+    let tank = member.module?.oxygenTank
+    return "\(member.name): \(tank?.level)%"
 }
 
 func firstCritical(in crew: [CrewMember]) -> String {
     var result: String?
     for member in crew {
-        if oxygenLevel(of: member)! < 20 {
-            result = member.name
+        if let lev = oxygenLevel(of: member)  {
+            if lev < 20 {
+                result = member.name
+            }
         }
     }
-    return result!
+    return result ?? "None"
 }
-*/
 
 
 // MARK: Finale · Launch Code
 
-// let launchCode = "\(A)-\(B)-\(C)-\(D)"
-// print("LAUNCH CODE: \(launchCode)")
+ let launchCode = "\(A)-\(B)-\(C)-\(D)"
+ print("LAUNCH CODE: \(launchCode)")
 
 
 // MARK: Bonus
 
-// func makeAlarm(threshold: Int) -> (Int) -> Bool { }
+ func makeAlarm(threshold: Int) -> (Int) -> Bool {
+     var count  = 0
+
+     var alarm  :  (Int) -> Bool  = { t in
+         
+         if t < threshold {
+             count += 1
+             print("Alarm #\(count) -> true")
+             return true
+         }else {
+             print(false)
+             return(false)
+         }
+     }
+     return alarm
+
+ }
+let alarm = makeAlarm(threshold: 20)
+alarm(12)
+alarm(40)
+alarm(5)
 
 
 // MARK: - ================= DEFENSE QUESTIONS =================
